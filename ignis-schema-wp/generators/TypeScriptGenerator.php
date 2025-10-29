@@ -493,6 +493,3 @@ TS;
         file_put_contents($output_dir . '/index.ts', implode("\n", $lines) . "\n");
     }
 }
-TS;
-    }
-}
