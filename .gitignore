@@ -1,0 +1,90 @@
+# General
+*.log
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+desktop.ini
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# IgniStack
+.kai-notify.json
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Dependencies
+node_modules/
+vendor/
+bower_components/
+
+# Environment
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Backup files
+*~
+*.bak
+*.backup
+*.old
+*.orig
+*~
+
+# Development
+coverage/
+.nyc_output/
+test/
+tests/
+
+# WordPress specific
+wp-config.php
+wp-content/uploads/
+wp-content/cache/
+wp-content/backup-db/
+*.sql
+
+# Docker (if removed)
+*.yml
+*.yaml
+.dockerignore
+
+# Packages
+*.zip
+*.tar.gz
+*.tar
+*.rar
+*.7z
+
+# Composer
+composer.phar
+composer.lock
+
+# Build artifacts
+build/
+dist/
+out/
+target/
+
+# SyncFire specific
+packages/

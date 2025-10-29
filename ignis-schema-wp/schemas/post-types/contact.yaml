@@ -1,0 +1,141 @@
+# Contact Management System
+# Example schema for managing contacts with email, phone, department
+
+post_type: contact
+label: Contacts
+singular_label: Contact
+description: Contact management with email, phone, and department information
+public: true
+show_in_rest: true
+menu_icon: dashicons-groups
+supports:
+  - title
+  - editor
+  - thumbnail
+has_archive: true
+rewrite:
+  slug: contacts
+  with_front: false
+
+fields:
+  # Basic Information
+  contact_name:
+    type: text
+    label: "Full Name"
+    required: true
+    maxlength: 100
+    placeholder: "John Doe"
+    instructions: "Enter the contact's full name"
+
+  contact_email:
+    type: email
+    label: "Email Address"
+    required: true
+    placeholder: "john.doe@example.com"
+    validation:
+      format: email
+
+  contact_phone:
+    type: text
+    label: "Phone Number"
+    placeholder: "+1 (555) 123-4567"
+    validation:
+      pattern: "^[+]?[(]?[0-9]{1,4}[)]?[-\\s\\./0-9]*$"
+
+  # Organization
+  contact_department:
+    type: select
+    label: "Department"
+    choices:
+      engineering: "Engineering"
+      marketing: "Marketing"
+      sales: "Sales"
+      operations: "Operations"
+      hr: "Human Resources"
+      finance: "Finance"
+    default_value: "engineering"
+    required: true
+
+  contact_position:
+    type: text
+    label: "Position/Title"
+    placeholder: "Senior Developer"
+
+  contact_company:
+    type: text
+    label: "Company"
+    placeholder: "Acme Inc."
+
+  # Additional Details
+  contact_bio:
+    type: textarea
+    label: "Biography"
+    rows: 4
+    maxlength: 500
+    new_lines: "br"
+
+  contact_notes:
+    type: wysiwyg
+    label: "Internal Notes"
+    tabs: "all"
+    toolbar: "basic"
+    media_upload: false
+
+  # Contact Preferences
+  is_primary_contact:
+    type: true_false
+    label: "Primary Contact"
+    default_value: false
+    ui: true
+    ui_on_text: "Yes"
+    ui_off_text: "No"
+
+  contact_status:
+    type: radio
+    label: "Status"
+    choices:
+      active: "Active"
+      inactive: "Inactive"
+      pending: "Pending Verification"
+    default_value: "active"
+    layout: "horizontal"
+
+  # Social Links
+  social_links:
+    type: repeater
+    label: "Social Media Links"
+    min: 0
+    max: 5
+    layout: "table"
+    button_label: "Add Social Link"
+    sub_fields:
+      social_platform:
+        type: select
+        label: "Platform"
+        choices:
+          linkedin: "LinkedIn"
+          twitter: "Twitter (X)"
+          github: "GitHub"
+          facebook: "Facebook"
+          instagram: "Instagram"
+      social_url:
+        type: url
+        label: "Profile URL"
+        placeholder: "https://linkedin.com/in/username"
+
+  # Related Information
+  related_contacts:
+    type: relationship
+    label: "Related Contacts"
+    post_type:
+      - contact
+    filters:
+      - search
+    max: 10
+    return_format: "object"
+    instructions: "Link to related contacts (colleagues, team members, etc.)"
+
+rest_api:
+  enabled: true
+  base: contacts
+  show_in_rest: true

@@ -1,0 +1,282 @@
+# Product Catalog System
+# Example schema for e-commerce product management
+
+post_type: product
+label: Products
+singular_label: Product
+description: Product catalog with pricing, inventory, and specifications
+public: true
+show_in_rest: true
+menu_icon: dashicons-products
+supports:
+  - title
+  - editor
+  - thumbnail
+  - excerpt
+has_archive: true
+rewrite:
+  slug: products
+  with_front: false
+
+fields:
+  # Basic Product Information
+  product_name:
+    type: text
+    label: "Product Name"
+    required: true
+    maxlength: 200
+    placeholder: "Premium Widget Pro"
+
+  sku:
+    type: text
+    label: "SKU"
+    required: true
+    placeholder: "PROD-001"
+    instructions: "Stock Keeping Unit - must be unique"
+    validation:
+      unique: true
+      pattern: "^[A-Z0-9-]+$"
+
+  product_description_short:
+    type: textarea
+    label: "Short Description"
+    rows: 3
+    maxlength: 250
+    instructions: "Brief product description for listings"
+
+  # Pricing
+  price:
+    type: number
+    label: "Regular Price"
+    required: true
+    min: 0
+    step: 0.01
+    prepend: "$"
+    default_value: 0
+
+  sale_price:
+    type: number
+    label: "Sale Price"
+    min: 0
+    step: 0.01
+    prepend: "$"
+    instructions: "Leave empty if not on sale"
+
+  on_sale:
+    type: true_false
+    label: "On Sale"
+    default_value: false
+    ui: true
+
+  # Inventory Management
+  stock_quantity:
+    type: number
+    label: "Stock Quantity"
+    default_value: 0
+    min: 0
+    instructions: "Number of items in stock"
+
+  in_stock:
+    type: true_false
+    label: "In Stock"
+    default_value: true
+    ui: true
+    ui_on_text: "Available"
+    ui_off_text: "Out of Stock"
+
+  low_stock_threshold:
+    type: number
+    label: "Low Stock Alert"
+    default_value: 5
+    min: 0
+    instructions: "Alert when stock falls below this number"
+
+  # Product Details
+  product_weight:
+    type: number
+    label: "Weight"
+    min: 0
+    step: 0.01
+    append: "kg"
+
+  product_dimensions:
+    type: group
+    label: "Dimensions"
+    layout: "row"
+    sub_fields:
+      length:
+        type: number
+        label: "Length"
+        min: 0
+        step: 0.01
+        append: "cm"
+      width:
+        type: number
+        label: "Width"
+        min: 0
+        step: 0.01
+        append: "cm"
+      height:
+        type: number
+        label: "Height"
+        min: 0
+        step: 0.01
+        append: "cm"
+
+  # Media
+  product_images:
+    type: gallery
+    label: "Product Images"
+    min: 1
+    max: 10
+    instructions: "Upload product images (recommended: 1200x1200px)"
+    mime_types: "jpg,jpeg,png,webp"
+
+  product_video:
+    type: oembed
+    label: "Product Video"
+    instructions: "YouTube or Vimeo video URL"
+
+  # Specifications
+  specifications:
+    type: repeater
+    label: "Product Specifications"
+    layout: "table"
+    button_label: "Add Specification"
+    min: 0
+    max: 20
+    sub_fields:
+      spec_name:
+        type: text
+        label: "Name"
+        placeholder: "Material"
+      spec_value:
+        type: text
+        label: "Value"
+        placeholder: "Stainless Steel"
+
+  # Features
+  features:
+    type: repeater
+    label: "Key Features"
+    layout: "block"
+    button_label: "Add Feature"
+    max: 10
+    sub_fields:
+      feature_icon:
+        type: select
+        label: "Icon"
+        choices:
+          star: "⭐ Star"
+          check: "✓ Checkmark"
+          shield: "🛡️ Shield"
+          lightning: "⚡ Lightning"
+          heart: "♥ Heart"
+        default_value: "check"
+      feature_title:
+        type: text
+        label: "Feature Title"
+        required: true
+      feature_description:
+        type: textarea
+        label: "Description"
+        rows: 2
+
+  # Categories and Tags
+  product_category:
+    type: taxonomy
+    label: "Product Categories"
+    taxonomy: product_cat
+    field_type: "checkbox"
+    add_term: true
+    save_terms: true
+    load_terms: true
+    return_format: "object"
+
+  product_tags:
+    type: taxonomy
+    label: "Product Tags"
+    taxonomy: product_tag
+    field_type: "multi_select"
+    add_term: true
+    save_terms: true
+    load_terms: true
+
+  # Brand
+  product_brand:
+    type: text
+    label: "Brand"
+    placeholder: "Acme Corporation"
+
+  brand_logo:
+    type: image
+    label: "Brand Logo"
+    return_format: "array"
+    preview_size: "thumbnail"
+
+  # Related Products
+  related_products:
+    type: relationship
+    label: "Related Products"
+    post_type:
+      - product
+    filters:
+      - search
+      - post_type
+    max: 8
+    return_format: "object"
+    instructions: "Select related or complementary products"
+
+  # Shipping
+  free_shipping:
+    type: true_false
+    label: "Free Shipping"
+    default_value: false
+    ui: true
+
+  shipping_class:
+    type: select
+    label: "Shipping Class"
+    choices:
+      standard: "Standard"
+      express: "Express"
+      heavy: "Heavy/Oversized"
+      fragile: "Fragile"
+    default_value: "standard"
+
+  # SEO and Marketing
+  product_badge:
+    type: select
+    label: "Product Badge"
+    choices:
+      new: "New Arrival"
+      bestseller: "Bestseller"
+      limited: "Limited Edition"
+      exclusive: "Exclusive"
+    allow_null: true
+    instructions: "Display a badge on the product"
+
+  featured_product:
+    type: true_false
+    label: "Featured Product"
+    default_value: false
+    ui: true
+    instructions: "Show on homepage and featured collections"
+
+  # Additional Information
+  warranty_info:
+    type: wysiwyg
+    label: "Warranty Information"
+    tabs: "all"
+    toolbar: "basic"
+    media_upload: false
+
+  care_instructions:
+    type: textarea
+    label: "Care Instructions"
+    rows: 4
+
+rest_api:
+  enabled: true
+  base: products
+  show_in_rest: true
