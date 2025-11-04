@@ -428,6 +428,28 @@ wp schema register --type=post-type --slug=movie
 wp schema register --type=taxonomy --slug=movie-genre
 ```
 
+### Import Schema Files
+
+```bash
+# Import a YAML file from any location (no need to remember the exact schema path)
+wp schema import /path/to/product.yaml
+
+# Import as a specific type
+wp schema import ~/Downloads/event.yaml --type=post-type
+wp schema import ./category.yaml --type=taxonomy
+
+# Import with custom slug
+wp schema import ./my-schema.yaml --slug=custom-name
+
+# Overwrite existing schema
+wp schema import product.yaml --overwrite
+
+# The import command will:
+# - Validate the schema file
+# - Copy it to the correct schemas directory (wp-content/schemas/post-types or wp-content/schemas/taxonomies)
+# - Provide next steps for registration
+```
+
 ### Flush Rewrite Rules
 
 ```bash

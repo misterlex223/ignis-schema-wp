@@ -582,6 +582,134 @@ class SchemaCommand extends WP_CLI_Command {
     }
 
     /**
+     * Import a schema YAML file to the schemas directory
+     *
+     * ## OPTIONS
+     *
+     * <file>
+     * : Path to the YAML file to import
+     *
+     * [--type=<type>]
+     * : Type of schema (post-type or taxonomy)
+     * ---
+     * default: post-type
+     * options:
+     *   - post-type
+     *   - taxonomy
+     * ---
+     *
+     * [--slug=<slug>]
+     * : Custom slug for the schema (defaults to filename without extension)
+     *
+     * [--overwrite]
+     * : Overwrite existing schema if it exists
+     *
+     * ## EXAMPLES
+     *
+     *     wp schema import /path/to/product.yaml
+     *     wp schema import ~/Downloads/event.yaml --type=post-type
+     *     wp schema import ./category.yaml --type=taxonomy --slug=product-category
+     *     wp schema import product.yaml --overwrite
+     *
+     * @when after_wp_load
+     */
+    public function import($args, $assoc_args) {
+        list($source_file) = $args;
+        $type = $assoc_args['type'] ?? 'post-type';
+        $overwrite = isset($assoc_args['overwrite']);
+
+        try {
+            // Resolve absolute path
+            if (!file_exists($source_file)) {
+                // Try relative to current directory
+                $cwd = getcwd();
+                $abs_path = $cwd . '/' . $source_file;
+                if (file_exists($abs_path)) {
+                    $source_file = $abs_path;
+                } else {
+                    WP_CLI::error("File not found: {$source_file}");
+                }
+            }
+
+            // Validate file extension
+            $ext = pathinfo($source_file, PATHINFO_EXTENSION);
+            if (!in_array($ext, ['yaml', 'yml', 'json'])) {
+                WP_CLI::error("Invalid file format. Only .yaml, .yml, or .json files are supported.");
+            }
+
+            // Validate schema by parsing it
+            WP_CLI::line("Validating schema file...");
+            $schema = SchemaParser::parse($source_file);
+
+            // Determine slug
+            if (isset($assoc_args['slug'])) {
+                $slug = $assoc_args['slug'];
+            } else {
+                $slug = pathinfo($source_file, PATHINFO_FILENAME);
+            }
+
+            // Validate schema type matches content
+            if ($type === 'taxonomy') {
+                if (empty($schema['taxonomy'])) {
+                    WP_CLI::error("The schema file doesn't appear to be a taxonomy schema. Missing 'taxonomy' key.");
+                }
+                $errors = SchemaParser::validateTaxonomySchema($schema);
+            } else {
+                if (empty($schema['post_type']) && empty($schema['label'])) {
+                    WP_CLI::error("The schema file doesn't appear to be a post type schema. Missing 'post_type' or 'label' key.");
+                }
+                $errors = SchemaParser::validate($schema);
+            }
+
+            if (!empty($errors)) {
+                WP_CLI::warning("Schema has validation errors:");
+                foreach ($errors as $error) {
+                    WP_CLI::line("  - {$error}");
+                }
+                WP_CLI::confirm("Do you want to continue importing despite validation errors?");
+            } else {
+                WP_CLI::success("Schema is valid!");
+            }
+
+            // Determine destination directory
+            $dest_dir = $type === 'taxonomy' ? $this->taxonomies_dir : $this->post_types_dir;
+
+            // Create directory if it doesn't exist
+            if (!is_dir($dest_dir)) {
+                mkdir($dest_dir, 0755, true);
+                WP_CLI::line("Created directory: {$dest_dir}");
+            }
+
+            // Determine destination file
+            $dest_file = $dest_dir . '/' . $slug . '.' . $ext;
+
+            // Check if file already exists
+            if (file_exists($dest_file) && !$overwrite) {
+                WP_CLI::error("Schema already exists: {$dest_file}\nUse --overwrite to replace it.");
+            }
+
+            // Copy file to destination
+            if (!copy($source_file, $dest_file)) {
+                WP_CLI::error("Failed to copy file to: {$dest_file}");
+            }
+
+            WP_CLI::success("Schema imported successfully!");
+            WP_CLI::line("");
+            WP_CLI::line("Location: {$dest_file}");
+            WP_CLI::line("Slug: {$slug}");
+            WP_CLI::line("Type: {$type}");
+            WP_CLI::line("");
+            WP_CLI::line("Next steps:");
+            WP_CLI::line("  1. Review the schema: wp schema info {$slug} --type={$type}");
+            WP_CLI::line("  2. Register the schema: wp schema register --type={$type} --slug={$slug}");
+            WP_CLI::line("  3. Flush rewrite rules: wp schema flush");
+
+        } catch (\Exception $e) {
+            WP_CLI::error($e->getMessage());
+        }
+    }
+
+    /**
      * Refresh/flush rewrite rules after schema changes
      *
      * ## EXAMPLES
