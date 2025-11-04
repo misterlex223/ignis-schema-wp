@@ -443,30 +443,161 @@ TS;
     }
 
     /**
+     * Generate TypeScript types for taxonomy
+     *
+     * @param array $schema Taxonomy schema data
+     * @return string TypeScript code
+     */
+    public static function generateTaxonomy($schema) {
+        $taxonomy = $schema['taxonomy'];
+        $type_name = self::toTypeName($taxonomy);
+
+        $output = [];
+        $output[] = "/**";
+        $output[] = " * Generated TypeScript types for {$schema['label']} Taxonomy";
+        $output[] = " * @generated from schema: {$taxonomy}.yaml";
+        $output[] = " */";
+        $output[] = "";
+
+        // Generate ACF term meta fields interface if fields exist
+        if (!empty($schema['fields'])) {
+            $output[] = "// ACF Term Meta Interface";
+            $output[] = "export interface {$type_name}ACF {";
+
+            foreach ($schema['fields'] as $field_key => $field_config) {
+                $field_lines = self::generateFieldType($field_key, $field_config, '  ');
+                $output = array_merge($output, $field_lines);
+            }
+
+            $output[] = "}";
+            $output[] = "";
+        }
+
+        // Generate WordPress term interface
+        $output[] = "// WordPress Term Interface";
+        $output[] = "export interface {$type_name} extends WPTerm {";
+        $output[] = "  taxonomy: '{$taxonomy}';";
+
+        if (!empty($schema['fields'])) {
+            $output[] = "  acf: {$type_name}ACF;";
+        }
+
+        $output[] = "}";
+        $output[] = "";
+
+        // Generate API response types
+        $output[] = "// API Response Types";
+        $output[] = "export type {$type_name}Response = {$type_name};";
+        $output[] = "export type {$type_name}ListResponse = {$type_name}[];";
+        $output[] = "";
+
+        // Generate create/update request types
+        $output[] = "// Create/Update Request Type";
+        $output[] = "export interface {$type_name}CreateRequest {";
+        $output[] = "  name: string;";
+        $output[] = "  slug?: string;";
+        $output[] = "  description?: string;";
+
+        if ($schema['hierarchical'] ?? false) {
+            $output[] = "  parent?: number;";
+        }
+
+        if (!empty($schema['fields'])) {
+            $output[] = "  acf?: Partial<{$type_name}ACF>;";
+        }
+
+        $output[] = "}";
+        $output[] = "";
+        $output[] = "export type {$type_name}UpdateRequest = Partial<{$type_name}CreateRequest>;";
+        $output[] = "";
+
+        // Generate helper types (only if not already included)
+        $output[] = self::generateHelperTypes();
+
+        return implode("\n", $output);
+    }
+
+    /**
      * Generate types for all schemas in a directory
      *
      * @param string $schema_dir Schema directory path
      * @param string $output_dir Output directory for TypeScript files
+     * @param string $type Optional: 'post-type' or 'taxonomy'
      * @return array Generated file paths
      */
-    public static function generateFromDirectory($schema_dir, $output_dir) {
+    public static function generateFromDirectory($schema_dir, $output_dir, $type = 'post-type') {
         if (!is_dir($output_dir)) {
             mkdir($output_dir, 0755, true);
         }
 
         $generated = [];
-        $schemas = \WordPressSchemaSystem\SchemaParser::loadDirectory($schema_dir);
 
-        foreach ($schemas as $post_type => $schema) {
-            $ts_code = self::generate($schema);
-            $output_file = $output_dir . '/' . $post_type . '.ts';
+        if ($type === 'post-type') {
+            $schemas = \WordPressSchemaSystem\SchemaParser::loadDirectory($schema_dir);
 
-            file_put_contents($output_file, $ts_code);
-            $generated[] = $output_file;
+            foreach ($schemas as $post_type => $schema) {
+                $ts_code = self::generate($schema);
+                $output_file = $output_dir . '/' . $post_type . '.ts';
+
+                file_put_contents($output_file, $ts_code);
+                $generated[] = $output_file;
+            }
+
+            // Generate index file
+            self::generateIndexFile($schemas, $output_dir, 'post-types');
+        } elseif ($type === 'taxonomy') {
+            $schemas = \WordPressSchemaSystem\SchemaParser::loadTaxonomyDirectory($schema_dir);
+
+            foreach ($schemas as $taxonomy => $schema) {
+                $ts_code = self::generateTaxonomy($schema);
+                $output_file = $output_dir . '/' . $taxonomy . '.ts';
+
+                file_put_contents($output_file, $ts_code);
+                $generated[] = $output_file;
+            }
+
+            // Generate index file
+            self::generateIndexFile($schemas, $output_dir, 'taxonomies');
         }
 
-        // Generate index file
-        self::generateIndexFile($schemas, $output_dir);
+        return $generated;
+    }
+
+    /**
+     * Generate types for both post types and taxonomies
+     *
+     * @param string $post_types_dir Post types schema directory
+     * @param string $taxonomies_dir Taxonomies schema directory
+     * @param string $output_dir Output directory for TypeScript files
+     * @return array Generated file paths
+     */
+    public static function generateAll($post_types_dir, $taxonomies_dir, $output_dir) {
+        if (!is_dir($output_dir)) {
+            mkdir($output_dir, 0755, true);
+        }
+
+        $generated = [];
+
+        // Generate post type types
+        if (is_dir($post_types_dir)) {
+            $post_types_output = $output_dir . '/post-types';
+            if (!is_dir($post_types_output)) {
+                mkdir($post_types_output, 0755, true);
+            }
+            $generated['post-types'] = self::generateFromDirectory($post_types_dir, $post_types_output, 'post-type');
+        }
+
+        // Generate taxonomy types
+        if (is_dir($taxonomies_dir)) {
+            $taxonomies_output = $output_dir . '/taxonomies';
+            if (!is_dir($taxonomies_output)) {
+                mkdir($taxonomies_output, 0755, true);
+            }
+            $generated['taxonomies'] = self::generateFromDirectory($taxonomies_dir, $taxonomies_output, 'taxonomy');
+        }
+
+        // Generate main index file
+        self::generateMainIndexFile($output_dir);
 
         return $generated;
     }
@@ -476,18 +607,44 @@ TS;
      *
      * @param array $schemas All schemas
      * @param string $output_dir Output directory
+     * @param string $type Type label for comment ('post-types' or 'taxonomies')
      * @return void
      */
-    private static function generateIndexFile($schemas, $output_dir) {
+    private static function generateIndexFile($schemas, $output_dir, $type = 'post-types') {
         $lines = [];
         $lines[] = "/**";
-        $lines[] = " * Generated TypeScript types index";
+        $lines[] = " * Generated TypeScript {$type} index";
         $lines[] = " * @generated";
         $lines[] = " */";
         $lines[] = "";
 
-        foreach ($schemas as $post_type => $schema) {
-            $lines[] = "export * from './{$post_type}';";
+        foreach ($schemas as $slug => $schema) {
+            $lines[] = "export * from './{$slug}';";
+        }
+
+        file_put_contents($output_dir . '/index.ts', implode("\n", $lines) . "\n");
+    }
+
+    /**
+     * Generate main index file that exports all type categories
+     *
+     * @param string $output_dir Output directory
+     * @return void
+     */
+    private static function generateMainIndexFile($output_dir) {
+        $lines = [];
+        $lines[] = "/**";
+        $lines[] = " * Generated TypeScript types main index";
+        $lines[] = " * @generated";
+        $lines[] = " */";
+        $lines[] = "";
+
+        if (file_exists($output_dir . '/post-types/index.ts')) {
+            $lines[] = "export * from './post-types';";
+        }
+
+        if (file_exists($output_dir . '/taxonomies/index.ts')) {
+            $lines[] = "export * from './taxonomies';";
         }
 
         file_put_contents($output_dir . '/index.ts', implode("\n", $lines) . "\n");

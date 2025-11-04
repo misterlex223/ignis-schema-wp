@@ -65,14 +65,21 @@ class WordPress_Schema_System {
     private static $instance = null;
 
     /**
-     * Schema directory
+     * Schema directories
      */
-    private $schema_dir;
+    private $post_types_dir;
+    private $taxonomies_dir;
 
     /**
      * Loaded schemas
      */
     private $schemas = [];
+    private $taxonomy_schemas = [];
+
+    /**
+     * Backward compatibility
+     */
+    private $schema_dir;
 
     /**
      * Get instance
@@ -88,22 +95,32 @@ class WordPress_Schema_System {
      * Constructor
      */
     private function __construct() {
-        $this->schema_dir = WP_CONTENT_DIR . '/schemas/post-types';
+        $this->post_types_dir = WP_CONTENT_DIR . '/schemas/post-types';
+        $this->taxonomies_dir = WP_CONTENT_DIR . '/schemas/taxonomies';
 
-        // Create schema directory if it doesn't exist
-        if (!is_dir($this->schema_dir)) {
-            mkdir($this->schema_dir, 0755, true);
+        // Backward compatibility
+        $this->schema_dir = $this->post_types_dir;
+
+        // Create schema directories if they don't exist
+        if (!is_dir($this->post_types_dir)) {
+            mkdir($this->post_types_dir, 0755, true);
+        }
+        if (!is_dir($this->taxonomies_dir)) {
+            mkdir($this->taxonomies_dir, 0755, true);
         }
 
-        // Copy example schemas if directory is empty
+        // Copy example schemas if directories are empty
         $this->maybeInstallExamples();
 
         // Load schemas
         add_action('init', [$this, 'loadSchemas'], 5);
+        add_action('init', [$this, 'loadTaxonomySchemas'], 5);
 
-        // Register post types and fields
+        // Register post types, taxonomies, and fields
         add_action('init', [$this, 'registerPostTypes'], 10);
+        add_action('init', [$this, 'registerTaxonomies'], 15);
         add_action('acf/init', [$this, 'registerACFFields'], 10);
+        add_action('acf/init', [$this, 'registerTaxonomyACFFields'], 10);
 
         // Load WP-CLI commands
         if (defined('WP_CLI') && WP_CLI) {
@@ -121,13 +138,24 @@ class WordPress_Schema_System {
     }
 
     /**
-     * Load schemas from directory
+     * Load post type schemas from directory
      */
     public function loadSchemas() {
         try {
-            $this->schemas = \WordPressSchemaSystem\SchemaParser::loadDirectory($this->schema_dir);
+            $this->schemas = \WordPressSchemaSystem\SchemaParser::loadDirectory($this->post_types_dir);
         } catch (Exception $e) {
-            error_log('WordPress Schema System: Failed to load schemas - ' . $e->getMessage());
+            error_log('WordPress Schema System: Failed to load post type schemas - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Load taxonomy schemas from directory
+     */
+    public function loadTaxonomySchemas() {
+        try {
+            $this->taxonomy_schemas = \WordPressSchemaSystem\SchemaParser::loadTaxonomyDirectory($this->taxonomies_dir);
+        } catch (Exception $e) {
+            error_log('WordPress Schema System: Failed to load taxonomy schemas - ' . $e->getMessage());
         }
     }
 
@@ -142,13 +170,42 @@ class WordPress_Schema_System {
     }
 
     /**
-     * Register ACF fields from schemas
+     * Register taxonomies from schemas
+     */
+    public function registerTaxonomies() {
+        // Resolve bidirectional relationships
+        $relations = \WordPressSchemaSystem\SchemaParser::resolvePostTypeTaxonomyRelations(
+            $this->schemas,
+            $this->taxonomy_schemas
+        );
+
+        foreach ($this->taxonomy_schemas as $taxonomy => $schema) {
+            $args = \WordPressSchemaSystem\SchemaParser::toTaxonomyArgs($schema);
+            $post_types = $relations[$taxonomy] ?? [];
+            register_taxonomy($taxonomy, $post_types, $args);
+        }
+    }
+
+    /**
+     * Register ACF fields from post type schemas
      */
     public function registerACFFields() {
         foreach ($this->schemas as $post_type => $schema) {
             if (!empty($schema['fields'])) {
                 $field_group = \WordPressSchemaSystem\ACFFieldGenerator::generateFieldGroup($schema);
                 \WordPressSchemaSystem\ACFFieldGenerator::register($field_group);
+            }
+        }
+    }
+
+    /**
+     * Register ACF fields from taxonomy schemas
+     */
+    public function registerTaxonomyACFFields() {
+        foreach ($this->taxonomy_schemas as $taxonomy => $schema) {
+            if (!empty($schema['fields'])) {
+                $field_group = \WordPressSchemaSystem\TaxonomyFieldGenerator::generateFieldGroup($schema);
+                \WordPressSchemaSystem\TaxonomyFieldGenerator::register($field_group);
             }
         }
     }
@@ -197,7 +254,41 @@ class WordPress_Schema_System {
      * Register REST API routes
      */
     public function registerRESTRoutes() {
-        // Schema management endpoint
+        // Post type schema endpoints
+        register_rest_route('schema-system/v1', '/post-types', [
+            'methods' => 'GET',
+            'callback' => [$this, 'getSchemas'],
+            'permission_callback' => function() {
+                return current_user_can('manage_options');
+            },
+        ]);
+
+        register_rest_route('schema-system/v1', '/post-types/(?P<post_type>[a-z0-9_]+)', [
+            'methods' => 'GET',
+            'callback' => [$this, 'getSchema'],
+            'permission_callback' => function() {
+                return current_user_can('manage_options');
+            },
+        ]);
+
+        // Taxonomy schema endpoints
+        register_rest_route('schema-system/v1', '/taxonomies', [
+            'methods' => 'GET',
+            'callback' => [$this, 'getTaxonomySchemas'],
+            'permission_callback' => function() {
+                return current_user_can('manage_options');
+            },
+        ]);
+
+        register_rest_route('schema-system/v1', '/taxonomies/(?P<taxonomy>[a-z0-9_-]+)', [
+            'methods' => 'GET',
+            'callback' => [$this, 'getTaxonomySchema'],
+            'permission_callback' => function() {
+                return current_user_can('manage_options');
+            },
+        ]);
+
+        // Backward compatibility
         register_rest_route('schema-system/v1', '/schemas', [
             'methods' => 'GET',
             'callback' => [$this, 'getSchemas'],
@@ -216,39 +307,76 @@ class WordPress_Schema_System {
     }
 
     /**
-     * REST API: Get all schemas
+     * REST API: Get all post type schemas
      */
     public function getSchemas($request) {
         return rest_ensure_response($this->schemas);
     }
 
     /**
-     * REST API: Get specific schema
+     * REST API: Get specific post type schema
      */
     public function getSchema($request) {
         $post_type = $request['post_type'];
 
         if (!isset($this->schemas[$post_type])) {
-            return new WP_Error('not_found', 'Schema not found', ['status' => 404]);
+            return new WP_Error('not_found', 'Post type schema not found', ['status' => 404]);
         }
 
         return rest_ensure_response($this->schemas[$post_type]);
     }
 
     /**
-     * Install example schemas if directory is empty
+     * REST API: Get all taxonomy schemas
+     */
+    public function getTaxonomySchemas($request) {
+        return rest_ensure_response($this->taxonomy_schemas);
+    }
+
+    /**
+     * REST API: Get specific taxonomy schema
+     */
+    public function getTaxonomySchema($request) {
+        $taxonomy = $request['taxonomy'];
+
+        if (!isset($this->taxonomy_schemas[$taxonomy])) {
+            return new WP_Error('not_found', 'Taxonomy schema not found', ['status' => 404]);
+        }
+
+        return rest_ensure_response($this->taxonomy_schemas[$taxonomy]);
+    }
+
+    /**
+     * Install example schemas if directories are empty
      */
     private function maybeInstallExamples() {
-        $files = glob($this->schema_dir . '/*.{yaml,yml,json}', GLOB_BRACE);
+        // Install post type examples
+        $pt_files = glob($this->post_types_dir . '/*.{yaml,yml,json}', GLOB_BRACE);
 
-        if (empty($files)) {
+        if (empty($pt_files)) {
             $examples_dir = WP_SCHEMA_SYSTEM_PATH . '/schemas/post-types';
 
             if (is_dir($examples_dir)) {
                 $examples = glob($examples_dir . '/*.{yaml,yml,json}', GLOB_BRACE);
 
                 foreach ($examples as $example) {
-                    $dest = $this->schema_dir . '/' . basename($example);
+                    $dest = $this->post_types_dir . '/' . basename($example);
+                    copy($example, $dest);
+                }
+            }
+        }
+
+        // Install taxonomy examples
+        $tax_files = glob($this->taxonomies_dir . '/*.{yaml,yml,json}', GLOB_BRACE);
+
+        if (empty($tax_files)) {
+            $examples_dir = WP_SCHEMA_SYSTEM_PATH . '/schemas/taxonomies';
+
+            if (is_dir($examples_dir)) {
+                $examples = glob($examples_dir . '/*.{yaml,yml,json}', GLOB_BRACE);
+
+                foreach ($examples as $example) {
+                    $dest = $this->taxonomies_dir . '/' . basename($example);
                     copy($example, $dest);
                 }
             }
@@ -256,10 +384,17 @@ class WordPress_Schema_System {
     }
 
     /**
-     * Get loaded schemas
+     * Get loaded post type schemas
      */
     public function getLoadedSchemas() {
         return $this->schemas;
+    }
+
+    /**
+     * Get loaded taxonomy schemas
+     */
+    public function getLoadedTaxonomySchemas() {
+        return $this->taxonomy_schemas;
     }
 }
 

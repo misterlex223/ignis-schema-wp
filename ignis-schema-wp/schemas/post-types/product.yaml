@@ -18,6 +18,11 @@ rewrite:
   slug: products
   with_front: false
 
+# Taxonomies for this post type (bidirectional relationship)
+taxonomies:
+  - product-category
+  - product-tag
+
 fields:
   # Basic Product Information
   product_name:
@@ -186,21 +191,23 @@ fields:
   product_category:
     type: taxonomy
     label: "Product Categories"
-    taxonomy: product_cat
+    taxonomy: product-category
     field_type: "checkbox"
     add_term: true
     save_terms: true
     load_terms: true
     return_format: "object"
+    instructions: "Select one or more product categories"
 
   product_tags:
     type: taxonomy
     label: "Product Tags"
-    taxonomy: product_tag
+    taxonomy: product-tag
     field_type: "multi_select"
     add_term: true
     save_terms: true
     load_terms: true
+    instructions: "Add relevant product tags for better organization"
 
   # Brand
   product_brand:

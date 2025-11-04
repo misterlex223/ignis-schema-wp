@@ -12,6 +12,8 @@ if (!defined('ABSPATH')) {
 
 $schema_system = wp_schema_system();
 $schemas = $schema_system->getLoadedSchemas();
+$taxonomy_schemas = $schema_system->getLoadedTaxonomySchemas();
+$total_schemas = count($schemas) + count($taxonomy_schemas);
 ?>
 
 <div class="wrap">
@@ -23,27 +25,31 @@ $schemas = $schema_system->getLoadedSchemas();
     </h1>
 
     <p class="description">
-        AI-friendly schema-based custom post type and ACF field management system.
-        Define your post types and fields in YAML/JSON, and they're automatically registered with full REST API support.
+        AI-friendly schema-based custom post type and taxonomy management system.
+        Define your post types, taxonomies, and fields in YAML/JSON, and they're automatically registered with full REST API support.
     </p>
 
     <div class="notice notice-info" style="margin-top: 20px;">
         <p>
             <strong>Quick Start:</strong>
-            Schemas are located in <code><?php echo WP_CONTENT_DIR; ?>/schemas/post-types/</code>
+            Post type schemas: <code><?php echo WP_CONTENT_DIR; ?>/schemas/post-types/</code>
+            <br>
+            Taxonomy schemas: <code><?php echo WP_CONTENT_DIR; ?>/schemas/taxonomies/</code>
         </p>
         <p>
             <strong>CLI:</strong> Use <code>wp schema --help</code> for command-line management
         </p>
     </div>
 
-    <?php if (empty($schemas)): ?>
+    <?php if ($total_schemas === 0): ?>
         <div class="notice notice-warning">
             <p><strong>No schemas found!</strong> Create a schema file in the schemas directory to get started.</p>
         </div>
     <?php else: ?>
 
-    <h2>Registered Schemas (<?php echo count($schemas); ?>)</h2>
+    <!-- Post Types Section -->
+    <?php if (!empty($schemas)): ?>
+    <h2>Registered Post Types (<?php echo count($schemas); ?>)</h2>
 
     <table class="wp-list-table widefat fixed striped">
         <thead>
@@ -101,6 +107,80 @@ $schemas = $schema_system->getLoadedSchemas();
             <?php endforeach; ?>
         </tbody>
     </table>
+    <?php endif; ?>
+
+    <!-- Taxonomies Section -->
+    <?php if (!empty($taxonomy_schemas)): ?>
+    <h2 style="margin-top: 40px;">Registered Taxonomies (<?php echo count($taxonomy_schemas); ?>)</h2>
+
+    <table class="wp-list-table widefat fixed striped">
+        <thead>
+            <tr>
+                <th>Taxonomy</th>
+                <th>Label</th>
+                <th>Type</th>
+                <th>Post Types</th>
+                <th>Fields</th>
+                <th>REST API</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($taxonomy_schemas as $taxonomy => $schema): ?>
+                <tr>
+                    <td>
+                        <strong><?php echo esc_html($taxonomy); ?></strong>
+                    </td>
+                    <td>
+                        <?php echo esc_html($schema['label']); ?>
+                        <?php if (!empty($schema['description'])): ?>
+                            <br>
+                            <small style="color: #666;"><?php echo esc_html($schema['description']); ?></small>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?php
+                        $hierarchical = $schema['hierarchical'] ?? false;
+                        ?>
+                        <span style="color: <?php echo $hierarchical ? '#2271b1' : '#8c8f94'; ?>;">
+                            <?php echo $hierarchical ? '📁 Hierarchical' : '🏷️ Flat'; ?>
+                        </span>
+                    </td>
+                    <td>
+                        <?php
+                        $post_types = $schema['post_types'] ?? [];
+                        if (!empty($post_types)) {
+                            echo esc_html(implode(', ', $post_types));
+                        } else {
+                            echo '<span style="color: #8c8f94;">None</span>';
+                        }
+                        ?>
+                    </td>
+                    <td>
+                        <?php echo count($schema['fields'] ?? []); ?> fields
+                    </td>
+                    <td>
+                        <?php
+                        $rest_enabled = $schema['show_in_rest'] ?? $schema['rest_api']['enabled'] ?? true;
+                        if ($rest_enabled):
+                            $rest_base = $schema['rest_api']['base'] ?? $taxonomy;
+                            $rest_url = rest_url("wp/v2/{$rest_base}");
+                        ?>
+                            <span style="color: #46b450;">✓ Enabled</span>
+                            <br>
+                            <small>
+                                <a href="<?php echo esc_url($rest_url); ?>" target="_blank" style="text-decoration: none;">
+                                    /wp-json/wp/v2/<?php echo esc_html($rest_base); ?>
+                                </a>
+                            </small>
+                        <?php else: ?>
+                            <span style="color: #dc3232;">✗ Disabled</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php endif; ?>
 
     <?php endif; ?>
 
@@ -117,32 +197,32 @@ $schemas = $schema_system->getLoadedSchemas();
         </thead>
         <tbody>
             <tr>
-                <td><code>wp schema list</code></td>
-                <td>List all registered schemas</td>
+                <td><code>wp schema list [--type=&lt;type&gt;]</code></td>
+                <td>List all registered schemas (post-type, taxonomy, or all)</td>
             </tr>
             <tr>
-                <td><code>wp schema info &lt;post_type&gt;</code></td>
+                <td><code>wp schema info &lt;slug&gt; [--type=&lt;type&gt;]</code></td>
                 <td>Show detailed information about a schema</td>
             </tr>
             <tr>
-                <td><code>wp schema validate &lt;post_type&gt;</code></td>
+                <td><code>wp schema validate &lt;slug&gt; [--type=&lt;type&gt;]</code></td>
                 <td>Validate a schema file for errors</td>
             </tr>
             <tr>
-                <td><code>wp schema create &lt;post_type&gt; --prompt="..."</code></td>
-                <td>Create a new schema from a natural language prompt</td>
+                <td><code>wp schema create &lt;slug&gt; --prompt="..." [--type=&lt;type&gt;]</code></td>
+                <td>Create a new post type or taxonomy schema from a natural language prompt</td>
             </tr>
             <tr>
-                <td><code>wp schema export &lt;post_type&gt;</code></td>
+                <td><code>wp schema export &lt;slug&gt; [--type=&lt;type&gt;]</code></td>
                 <td>Export schema to TypeScript types</td>
             </tr>
             <tr>
-                <td><code>wp schema export-all</code></td>
-                <td>Export all schemas to TypeScript types</td>
+                <td><code>wp schema export-all [--type=&lt;type&gt;]</code></td>
+                <td>Export all schemas to TypeScript types (post-type, taxonomy, or all)</td>
             </tr>
             <tr>
-                <td><code>wp schema register</code></td>
-                <td>Manually register all post types and fields</td>
+                <td><code>wp schema register [--type=&lt;type&gt;]</code></td>
+                <td>Manually register post types, taxonomies, and fields</td>
             </tr>
             <tr>
                 <td><code>wp schema flush</code></td>
@@ -165,10 +245,13 @@ $schemas = $schema_system->getLoadedSchemas();
         </div>
 
         <div class="card" style="padding: 20px;">
-            <h3 style="margin-top: 0;">📂 Schema Directory</h3>
+            <h3 style="margin-top: 0;">📂 Schema Directories</h3>
             <p>Edit schema files directly on the server.</p>
-            <code style="display: block; padding: 10px; background: #f5f5f5; margin: 10px 0;">
+            <code style="display: block; padding: 5px 10px; background: #f5f5f5; margin: 5px 0; font-size: 11px;">
                 <?php echo WP_CONTENT_DIR; ?>/schemas/post-types/
+            </code>
+            <code style="display: block; padding: 5px 10px; background: #f5f5f5; margin: 5px 0; font-size: 11px;">
+                <?php echo WP_CONTENT_DIR; ?>/schemas/taxonomies/
             </code>
         </div>
 
@@ -204,11 +287,23 @@ $schemas = $schema_system->getLoadedSchemas();
                 <td><?php echo WP_SCHEMA_SYSTEM_VERSION; ?></td>
             </tr>
             <tr>
-                <td><strong>Schema Directory</strong></td>
+                <td><strong>Post Types Directory</strong></td>
                 <td>
                     <code><?php echo WP_CONTENT_DIR; ?>/schemas/post-types/</code>
                     <?php
                     $is_writable = is_writable(WP_CONTENT_DIR . '/schemas/post-types/');
+                    ?>
+                    <span style="color: <?php echo $is_writable ? '#46b450' : '#dc3232'; ?>;">
+                        <?php echo $is_writable ? '✓ Writable' : '✗ Not writable'; ?>
+                    </span>
+                </td>
+            </tr>
+            <tr>
+                <td><strong>Taxonomies Directory</strong></td>
+                <td>
+                    <code><?php echo WP_CONTENT_DIR; ?>/schemas/taxonomies/</code>
+                    <?php
+                    $is_writable = is_writable(WP_CONTENT_DIR . '/schemas/taxonomies/');
                     ?>
                     <span style="color: <?php echo $is_writable ? '#46b450' : '#dc3232'; ?>;">
                         <?php echo $is_writable ? '✓ Writable' : '✗ Not writable'; ?>

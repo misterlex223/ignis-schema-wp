@@ -287,4 +287,239 @@ class SchemaParser {
 
         return $args;
     }
+
+    /**
+     * Validate taxonomy schema structure
+     *
+     * @param array $schema Taxonomy schema data
+     * @return array Validation errors (empty if valid)
+     */
+    public static function validateTaxonomySchema($schema) {
+        $errors = [];
+
+        // Check required fields
+        if (empty($schema['taxonomy'])) {
+            $errors[] = "Missing required field: taxonomy";
+        } elseif (strlen($schema['taxonomy']) > 32) {
+            $errors[] = "taxonomy must be 32 characters or less";
+        } elseif (!preg_match('/^[a-z0-9_-]+$/', $schema['taxonomy'])) {
+            $errors[] = "taxonomy must contain only lowercase letters, numbers, underscores, and hyphens";
+        }
+
+        if (empty($schema['label'])) {
+            $errors[] = "Missing required field: label";
+        }
+
+        // Validate post_types if specified
+        if (isset($schema['post_types'])) {
+            if (!is_array($schema['post_types'])) {
+                $errors[] = "post_types must be an array";
+            }
+        }
+
+        // Validate fields
+        if (isset($schema['fields']) && is_array($schema['fields'])) {
+            foreach ($schema['fields'] as $field_key => $field) {
+                $field_errors = self::validateField($field_key, $field);
+                $errors = array_merge($errors, $field_errors);
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Get taxonomy schema defaults
+     *
+     * @return array Default values
+     */
+    public static function getTaxonomyDefaults() {
+        return [
+            'public' => true,
+            'show_in_rest' => true,
+            'hierarchical' => false,
+            'show_admin_column' => true,
+            'query_var' => true,
+            'fields' => [],
+            'rest_api' => [
+                'enabled' => true,
+            ],
+        ];
+    }
+
+    /**
+     * Merge taxonomy schema with defaults
+     *
+     * @param array $schema Taxonomy schema data
+     * @return array Merged schema
+     */
+    public static function mergeTaxonomyDefaults($schema) {
+        $defaults = self::getTaxonomyDefaults();
+        return array_merge($defaults, $schema);
+    }
+
+    /**
+     * Load all taxonomy schemas from a directory
+     *
+     * @param string $directory Directory path
+     * @return array Array of schemas indexed by taxonomy
+     */
+    public static function loadTaxonomyDirectory($directory) {
+        if (!is_dir($directory)) {
+            return []; // Return empty array if directory doesn't exist yet
+        }
+
+        $schemas = [];
+        $files = glob($directory . '/*.{yaml,yml,json}', GLOB_BRACE);
+
+        foreach ($files as $file) {
+            try {
+                $schema = self::parse($file);
+                $taxonomy = $schema['taxonomy'] ?? basename($file, '.' . pathinfo($file, PATHINFO_EXTENSION));
+                $schemas[$taxonomy] = $schema;
+            } catch (\Exception $e) {
+                error_log("Failed to load taxonomy schema from {$file}: " . $e->getMessage());
+            }
+        }
+
+        return $schemas;
+    }
+
+    /**
+     * Convert schema to WordPress taxonomy args
+     *
+     * @param array $schema Taxonomy schema data
+     * @return array WordPress register_taxonomy() arguments
+     */
+    public static function toTaxonomyArgs($schema) {
+        $singular_label = $schema['singular_label'] ?? $schema['label'];
+        $hierarchical = $schema['hierarchical'] ?? false;
+
+        // Generate labels
+        $labels = [
+            'name' => $schema['label'],
+            'singular_name' => $singular_label,
+            'search_items' => 'Search ' . $schema['label'],
+            'all_items' => 'All ' . $schema['label'],
+            'edit_item' => 'Edit ' . $singular_label,
+            'update_item' => 'Update ' . $singular_label,
+            'add_new_item' => 'Add New ' . $singular_label,
+            'new_item_name' => 'New ' . $singular_label . ' Name',
+            'menu_name' => $schema['label'],
+        ];
+
+        // Add hierarchical-specific labels
+        if ($hierarchical) {
+            $labels['parent_item'] = 'Parent ' . $singular_label;
+            $labels['parent_item_colon'] = 'Parent ' . $singular_label . ':';
+        } else {
+            $labels['popular_items'] = 'Popular ' . $schema['label'];
+            $labels['separate_items_with_commas'] = 'Separate ' . strtolower($schema['label']) . ' with commas';
+            $labels['add_or_remove_items'] = 'Add or remove ' . strtolower($schema['label']);
+            $labels['choose_from_most_used'] = 'Choose from the most used ' . strtolower($schema['label']);
+            $labels['not_found'] = 'No ' . strtolower($schema['label']) . ' found';
+        }
+
+        $args = [
+            'labels' => $labels,
+            'public' => $schema['public'] ?? true,
+            'show_in_rest' => $schema['show_in_rest'] ?? true,
+            'hierarchical' => $hierarchical,
+            'show_admin_column' => $schema['show_admin_column'] ?? true,
+            'query_var' => $schema['query_var'] ?? true,
+        ];
+
+        // Add optional fields
+        if (!empty($schema['description'])) {
+            $args['description'] = $schema['description'];
+        }
+
+        if (isset($schema['show_ui'])) {
+            $args['show_ui'] = $schema['show_ui'];
+        }
+
+        if (isset($schema['show_in_menu'])) {
+            $args['show_in_menu'] = $schema['show_in_menu'];
+        }
+
+        if (isset($schema['show_in_nav_menus'])) {
+            $args['show_in_nav_menus'] = $schema['show_in_nav_menus'];
+        }
+
+        if (isset($schema['show_tagcloud'])) {
+            $args['show_tagcloud'] = $schema['show_tagcloud'];
+        }
+
+        if (!empty($schema['rewrite'])) {
+            $args['rewrite'] = $schema['rewrite'];
+        }
+
+        if (isset($schema['capabilities'])) {
+            $args['capabilities'] = $schema['capabilities'];
+        }
+
+        // REST API configuration
+        if (!empty($schema['rest_api']['base'])) {
+            $args['rest_base'] = $schema['rest_api']['base'];
+        }
+
+        if (!empty($schema['rest_api']['controller'])) {
+            $args['rest_controller_class'] = $schema['rest_api']['controller'];
+        }
+
+        return $args;
+    }
+
+    /**
+     * Resolve bidirectional post type <-> taxonomy relationships
+     *
+     * This method analyzes both post type and taxonomy schemas to build
+     * a complete mapping of which taxonomies should be registered to which post types.
+     * It handles both ways of defining the relationship:
+     * - In post type schema: taxonomies: [cat1, cat2]
+     * - In taxonomy schema: post_types: [post1, post2]
+     *
+     * @param array $post_type_schemas Post type schemas indexed by post_type
+     * @param array $taxonomy_schemas Taxonomy schemas indexed by taxonomy
+     * @return array Mapping of [taxonomy => [post_types]]
+     */
+    public static function resolvePostTypeTaxonomyRelations($post_type_schemas, $taxonomy_schemas) {
+        $relations = [];
+
+        // Initialize with empty arrays for all taxonomies
+        foreach ($taxonomy_schemas as $taxonomy => $schema) {
+            $relations[$taxonomy] = [];
+        }
+
+        // First pass: taxonomies defining their post types
+        foreach ($taxonomy_schemas as $taxonomy => $schema) {
+            if (!empty($schema['post_types']) && is_array($schema['post_types'])) {
+                $relations[$taxonomy] = array_merge(
+                    $relations[$taxonomy] ?? [],
+                    $schema['post_types']
+                );
+            }
+        }
+
+        // Second pass: post types defining their taxonomies
+        foreach ($post_type_schemas as $post_type => $schema) {
+            if (!empty($schema['taxonomies']) && is_array($schema['taxonomies'])) {
+                foreach ($schema['taxonomies'] as $taxonomy) {
+                    if (!isset($relations[$taxonomy])) {
+                        $relations[$taxonomy] = [];
+                    }
+                    if (!in_array($post_type, $relations[$taxonomy])) {
+                        $relations[$taxonomy][] = $post_type;
+                    }
+                }
+            }
+        }
+
+        // Remove duplicates and empty arrays
+        foreach ($relations as $taxonomy => $post_types) {
+            $relations[$taxonomy] = array_unique($post_types);
+        }
+
+        return $relations;
+    }
 }
